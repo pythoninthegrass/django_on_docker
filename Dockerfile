@@ -38,8 +38,8 @@ COPY ./app/entrypoint.sh .
 COPY ./app .
 
 ARG USER_NAME=appuser
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
+ARG USER_UID=${UID:-1000}
+ARG USER_GID=${GID:-$USER_UID}
 
 RUN groupadd --gid $USER_GID $USER_NAME \
     && useradd --uid $USER_UID --gid $USER_GID -m $USER_NAME \

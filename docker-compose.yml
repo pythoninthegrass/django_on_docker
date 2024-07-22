@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     tty: true
     stdin_open: true
+    user: "${UID}:${GID}"
     volumes:
       - ./app/:/app/
     ports:
