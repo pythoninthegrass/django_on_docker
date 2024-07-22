@@ -1,25 +1,37 @@
-version: '3.8'
-
 services:
   web:
-    build: ./app
-    command: python manage.py runserver 0.0.0.0:8000
+    container_name: hello-django-web
+    hostname: hello-django-web
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
-      - ./app/:/usr/src/app/
+      - ./app/:/app/
     ports:
       - 8000:8000
     env_file:
       - ./.env.dev
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    command: python3 manage.py runserver 0.0.0.0:8000
+
   db:
-    image: postgres:15
+    image: postgres:16.3-alpine3.19
+    container_name: hello-django-db
+    hostname: hello-django-db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
+      - POSTGRES_DB=hello_django_dev
       - POSTGRES_USER=hello_django
       - POSTGRES_PASSWORD=hello_django
-      - POSTGRES_DB=hello_django_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hello_django"]
+      start_period: 15s
+      interval: 5s
+      timeout: 10s
+      retries: 5
 
 volumes:
   postgres_data:
