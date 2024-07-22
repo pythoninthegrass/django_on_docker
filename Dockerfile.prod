@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1.7
+
+FROM python:3.11.9-slim-bullseye as builder
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update \
+    && apt-get install -qqy --no-install-recommends \
+        gcc  \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PIP_CACHE_DIR=/root/.cache/pip
+ENV PIP_DISABLE_PIP_VERSION_CHECK=on
+ENV PIP_DEFAULT_TIMEOUT=100
+
+RUN python -m pip install --upgrade pip setuptools \
+    && python -m pip install flake8
+
+WORKDIR /app
+
+COPY ./app .
+
+RUN flake8 --ignore=E501,F401 .
+
+COPY ./requirements.txt .
+
+RUN mkdir -p "$PIP_CACHE_DIR"
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip wheel --no-deps \
+    --wheel-dir /app/wheels \
+    -r requirements.txt
+
+FROM python:3.11.9-slim-bullseye
+
+ENV HOME="/app"
+ENV APP_HOME="${HOME}/web"
+
+RUN <<EOF
+#!/usr/bin/env bash
+addgroup --system app && adduser --system --group app
+mkdir -p ${APP_HOME}/{staticfiles,mediafiles}
+EOF
+
+WORKDIR "$APP_HOME"
+
+RUN apt-get update \
+    && apt-get install -qqy --no-install-recommends \
+        netcat \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/wheels /wheels
+COPY --from=builder /app/requirements.txt .
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install --no-cache /wheels/*
+
+COPY ./app/entrypoint.sh /app/
+COPY ./app .
+
+ARG USER_NAME=appuser
+ARG USER_UID=${UID:-1000}
+ARG USER_GID=${GID:-$USER_UID}
+
+RUN groupadd --gid $USER_GID $USER_NAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USER_NAME \
+    && chown -R $USER_NAME:$USER_NAME $APP_HOME
+
+USER $USER_NAME
+
+ENTRYPOINT ["/app/entrypoint.sh"]
