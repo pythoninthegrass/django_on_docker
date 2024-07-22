@@ -1,31 +1,64 @@
-version: '3.8'
-
 services:
   web:
+    container_name: hello-django-web-prod
+    hostname: hello-django-web
     build:
-      context: ./app
+      context: .
       dockerfile: Dockerfile.prod
-    command: gunicorn hello_django.wsgi:application --bind 0.0.0.0:8000
+    tty: true
+    stdin_open: true
+    user: "${UID}:${GID}"
     volumes:
-      - static_volume:/home/app/web/staticfiles
-      - media_volume:/home/app/web/mediafiles
+      - static_volume:/app/web/staticfiles
+      - media_volume:/app/web/mediafiles
+    environment:
+      - DEBUG=1
+      - SECRET_KEY=${SECRET_KEY?Variable not set}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS?Variable not set}
+      - DATBASE=postgres
+      - SQL_ENGINE=django.db.backends.postgresql
+      - SQL_DATABASE=${SQL_DATABASE?Variable not set}
+      - SQL_USER=${SQL_USER?Variable not set}
+      - SQL_PASSWORD=${SQL_PASSWORD?Variable not set}
+      - SQL_HOST=db
+      - SQL_PORT=5432
     expose:
       - 8000
-    env_file:
-      - ./.env.prod
     depends_on:
       - db
+    command: gunicorn hello_django.wsgi:application --bind 0.0.0.0:8000
+
   db:
-    image: postgres:15
+    image: postgres:16.3-alpine3.19
+    container_name: hello-django-db-prod
+    hostname: hello-django-db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
-    env_file:
-      - ./.env.prod.db
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_DB=${SQL_DATABASE?Variable not set}
+      - POSTGRES_USER=${SQL_USER?Variable not set}
+      - POSTGRES_PASSWORD=${SQL_PASSWORD?Variable not set}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hello_django"]
+      start_period: 10s
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
   nginx:
-    build: ./nginx
+    container_name: hello-django-nginx-prod
+    hostname: hello-django-nginx
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    tty: true
+    stdin_open: true
+    user: "${UID}:${GID}"
     volumes:
-      - static_volume:/home/app/web/staticfiles
-      - media_volume:/home/app/web/mediafiles
+      - static_volume:/app/web/staticfiles
+      - media_volume:/app/web/mediafiles
     ports:
       - 1337:80
     depends_on:
@@ -35,3 +68,8 @@ volumes:
   postgres_data:
   static_volume:
   media_volume:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/app/mediafiles
+      o: bind

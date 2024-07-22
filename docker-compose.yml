@@ -1,16 +1,16 @@
 services:
   web:
-    container_name: hello-django-web
+    container_name: hello-django-web-dev
     hostname: hello-django-web
     build:
       context: .
       dockerfile: Dockerfile
+    tty: true
+    stdin_open: true
     volumes:
       - ./app/:/app/
     ports:
       - 8000:8000
-    env_file:
-      - ./.env.dev
     depends_on:
       db:
         condition: service_healthy
@@ -18,14 +18,14 @@ services:
 
   db:
     image: postgres:16.3-alpine3.19
-    container_name: hello-django-db
+    container_name: hello-django-db-dev
     hostname: hello-django-db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
-      - POSTGRES_DB=hello_django_dev
-      - POSTGRES_USER=hello_django
-      - POSTGRES_PASSWORD=hello_django
+      - POSTGRES_DB=${SQL_DATABASE?Variable not set}
+      - POSTGRES_USER=${SQL_USER?Variable not set}
+      - POSTGRES_PASSWORD=${SQL_PASSWORD?Variable not set}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hello_django"]
       start_period: 15s

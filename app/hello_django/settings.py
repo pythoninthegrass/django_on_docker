@@ -10,8 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
-import os
+from decouple import config
 from pathlib import Path
+from hello_django.custom_storage import TimestampedFileSystemStorage
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,13 +21,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
-SECRET_KEY = os.environ.get("SECRET_KEY")
+SECRET_KEY = config("SECRET_KEY")
 
-DEBUG = bool(os.environ.get("DEBUG", default=0))
+DEBUG = config("DEBUG", default=False, cast=bool)
 
 # 'DJANGO_ALLOWED_HOSTS' should be a single string of hosts with a space between each.
 # For example: 'DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]'
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
+ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS").split(" ")
 
 CSRF_TRUSTED_ORIGINS = ["http://localhost:1337"]
 
@@ -79,12 +80,12 @@ WSGI_APPLICATION = "hello_django.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": os.environ.get("SQL_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": os.environ.get("SQL_DATABASE", BASE_DIR / "db.sqlite3"),
-        "USER": os.environ.get("SQL_USER", "user"),
-        "PASSWORD": os.environ.get("SQL_PASSWORD", "password"),
-        "HOST": os.environ.get("SQL_HOST", "localhost"),
-        "PORT": os.environ.get("SQL_PORT", "5432"),
+        "ENGINE": config("SQL_ENGINE", default="django.db.backends.sqlite3"),
+        "NAME": config("SQL_DATABASE", default=BASE_DIR / "db.sqlite3"),
+        "USER": config("SQL_USER", default="user"),
+        "PASSWORD": config("SQL_PASSWORD", default="password"),
+        "HOST": config("SQL_HOST", default="localhost"),
+        "PORT": config("SQL_PORT", default="5432"),
     }
 }
 
@@ -124,11 +125,17 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = "/home/app/web/staticfiles"
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "mediafiles"
+MEDIA_ROOT = config('MEDIA_ROOT', default=BASE_DIR / 'mediafiles')
 
+FILE_UPLOAD_PERMISSIONS = 0o644
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755
+
+# TODO: debug iso timestamp suffix not overriding default naming scheme
+# * `ded.png` -> `ded_20220323_123456.png
+DEFAULT_FILE_STORAGE = 'hello_django.custom_storage.TimestampedFileSystemStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

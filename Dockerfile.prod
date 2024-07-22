@@ -1,73 +1,78 @@
-###########
-# BUILDER #
-###########
+# syntax=docker/dockerfile:1.7
 
-# pull official base image
-FROM python:3.11.4-slim-buster as builder
+FROM python:3.11.9-slim-bullseye as builder
 
-# set work directory
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update \
+    && apt-get install -qqy --no-install-recommends \
+        gcc  \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PIP_CACHE_DIR=/root/.cache/pip
+ENV PIP_DISABLE_PIP_VERSION_CHECK=on
+ENV PIP_DEFAULT_TIMEOUT=100
+
+RUN python -m pip install --upgrade pip setuptools \
+    && python -m pip install flake8
+
 WORKDIR /app
 
-# set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+COPY ./app .
 
-# install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc
-
-# lint
-RUN pip install --upgrade pip
-RUN pip install flake8==6.0.0
-COPY . /app/
 RUN flake8 --ignore=E501,F401 .
 
-# install python dependencies
 COPY ./requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
 
+RUN mkdir -p "$PIP_CACHE_DIR"
 
-#########
-# FINAL #
-#########
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip wheel --no-deps \
+    --wheel-dir /app/wheels \
+    -r requirements.txt
 
-# pull official base image
-FROM python:3.11.4-slim-buster
+FROM python:3.11.9-slim-bullseye
 
-# create directory for the app user
-RUN mkdir -p /home/app
+ENV HOME="/app"
+ENV APP_HOME="${HOME}/web"
 
-# create the app user
-RUN addgroup --system app && adduser --system --group app
+RUN <<EOF
+#!/usr/bin/env bash
+addgroup --system app && adduser --system --group app
+mkdir -p ${APP_HOME}/{staticfiles,mediafiles}
+EOF
 
-# create the appropriate directories
-ENV HOME=/home/app
-ENV APP_HOME=/home/app/web
-RUN mkdir $APP_HOME
-RUN mkdir $APP_HOME/staticfiles
-RUN mkdir $APP_HOME/mediafiles
-WORKDIR $APP_HOME
+WORKDIR "$APP_HOME"
 
-# install dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends netcat
+RUN apt-get update \
+    && apt-get install -qqy --no-install-recommends \
+        netcat \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
-RUN pip install --upgrade pip
-RUN pip install --no-cache /wheels/*
 
-# copy entrypoint.prod.sh
-COPY ./entrypoint.prod.sh .
-RUN sed -i 's/\r$//g'  $APP_HOME/entrypoint.prod.sh
-RUN chmod +x  $APP_HOME/entrypoint.prod.sh
+RUN python -m pip install --upgrade pip \
+    && python -m pip install --no-cache /wheels/*
 
-# copy project
-COPY . $APP_HOME
+COPY ./app/entrypoint.sh /app/
+COPY ./app .
 
-# chown all the files to the app user
-RUN chown -R app:app $APP_HOME
+ARG USER_NAME=appuser
+ARG USER_UID=${UID:-1000}
+ARG USER_GID=${GID:-$USER_UID}
 
-# change to the app user
-USER app
+RUN groupadd --gid $USER_GID $USER_NAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USER_NAME \
+    && chown -R $USER_NAME:$USER_NAME $APP_HOME
 
-# run entrypoint.prod.sh
-ENTRYPOINT ["/home/app/web/entrypoint.prod.sh"]
+USER $USER_NAME
+
+ENTRYPOINT ["/app/entrypoint.sh"]
